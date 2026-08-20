@@ -29,9 +29,14 @@ jobs:
           pip install -r requirements-windows.txt
           pip install pyinstaller
 
+      - name: List installed packages
+        # диагностика: если тут нет pypresence/PyQt6/mutagen — дело в requirements-windows.txt,
+        # а не в PyInstaller, и следующий шаг тоже упадёт
+        run: pip list
+
       - name: Build EXE
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --collect-all PyQt6 app.py
+          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --collect-all PyQt6 --collect-all pypresence app.py
 
       - name: Verify build output
         run: |
