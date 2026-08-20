@@ -988,7 +988,7 @@ class GlideMusicModern(QMainWindow):
 
         self.update_library_header()
 
-
+    def request_artwork(self, title, artist):
         self.art_thumbnail.setPixmap(QPixmap())
         self.art_thumbnail.setText("🎵")
         self._art_request_id = self.artwork_loader.request(title, artist)
