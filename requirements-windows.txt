@@ -1,0 +1,7 @@
+PyQt6
+PyQt6-QtMultimedia
+mutagen
+pypresence
+# dbus-next намеренно не включён — это Linux/D-Bus-специфика (MPRIS),
+# на Windows не работает и не нужен. Импорт mpris.py в app.py теперь
+# сам это учитывает (MPRIS_AVAILABLE = sys.platform.startswith("linux")).
