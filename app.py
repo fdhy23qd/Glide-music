@@ -22,7 +22,7 @@ if MPRIS_AVAILABLE:
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QSlider, QLabel, QListWidget,
                              QFileDialog, QToolBar, QGraphicsOpacityEffect, QToolButton,
-                             QSizePolicy, QLineEdit, QSizeGrip)
+                             QSizePolicy, QLineEdit, QSizeGrip, QAbstractItemView, QMenu)
 from PyQt6.QtCore import Qt, QUrl, QSettings, QTimer, QPropertyAnimation, QEvent
 from PyQt6.QtGui import (QFont, QColor, QPainter, QLinearGradient, QBrush, QPen,
                          QTransform, QPixmap, QPainterPath, QShortcut, QKeySequence)
@@ -183,10 +183,10 @@ class GlideMusicModern(QMainWindow):
         self.discord_update_timer.setInterval(15000)
         self.discord_update_timer.timeout.connect(self.update_discord_presence)
 
-        self.audio_output.setVolume(0.7)
+        self.audio_output.setVolume(1.0)
         self.current_playlist = []
         self.current_track_row = -1
-        self._last_volume = 70
+        self._last_volume = 100
 
         self.artwork_loader = ArtworkLoader()
         self._art_request_id = 0
@@ -204,7 +204,7 @@ class GlideMusicModern(QMainWindow):
 
         self.load_saved_library()
 
-        saved_volume = int(self.settings.value("volume", 70))
+        saved_volume = int(self.settings.value("volume", 100))
         self.volume_slider.setValue(saved_volume)
         self.set_volume(saved_volume)
     def start_mpris_thread(self):
@@ -259,8 +259,6 @@ class GlideMusicModern(QMainWindow):
         self.update_mpris_playback_status()
 
     def update_mpris_playback_status(self):
-        if self.mpris_interface is None:
-            return
         state = self.player.playbackState()
         if state == QMediaPlayer.PlaybackState.PlayingState:
             status = "Playing"
@@ -268,7 +266,10 @@ class GlideMusicModern(QMainWindow):
             status = "Paused"
         else:
             status = "Stopped"
-        self.mpris_interface.set_playback_status(status)
+        # MPRIS обновляем, только если он вообще доступен (Linux/D-Bus).
+        # Discord — независимо от этого, он не имеет отношения к MPRIS.
+        if self.mpris_interface is not None:
+            self.mpris_interface.set_playback_status(status)
         self.update_discord_presence()
 
     def update_discord_presence(self):
@@ -379,6 +380,10 @@ class GlideMusicModern(QMainWindow):
         QShortcut(QKeySequence("Ctrl+M"), self, activated=self.toggle_mute)
         QShortcut(QKeySequence("Ctrl+F"), self, activated=lambda: self.search_input.setFocus())
 
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.track_list)
+        delete_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        delete_shortcut.activated.connect(self.delete_selected_tracks)
+
     def init_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.central_widget = QWidget()
@@ -422,6 +427,10 @@ class GlideMusicModern(QMainWindow):
         # Список треков
         self.track_list = QListWidget()
         self.track_list.setObjectName("modernList")
+        # Ctrl/Shift-выделение нескольких треков сразу — для удаления пачкой
+        self.track_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.track_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.track_list.customContextMenuRequested.connect(self.show_track_context_menu)
         self.content_layout.addWidget(self.track_list)
 
         # Плейсхолдер для пустой библиотеки (показывается вместо списка)
@@ -538,7 +547,7 @@ class GlideMusicModern(QMainWindow):
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setObjectName("volumeSlider")
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(70)
+        self.volume_slider.setValue(100)
         self.volume_slider.setFixedWidth(100)
         
         self.volume_layout.addWidget(self.vol_icon)
@@ -936,7 +945,50 @@ class GlideMusicModern(QMainWindow):
             elif not is_current and has_marker:
                 item.setText(item.text()[2:])
 
-    def request_artwork(self, title, artist):
+    def show_track_context_menu(self, pos):
+        if self.track_list.itemAt(pos) is None:
+            return
+        menu = QMenu(self)
+        count = len(self.track_list.selectedItems())
+        label = "Удалить трек" if count <= 1 else f"Удалить треки ({count})"
+        delete_action = menu.addAction(label)
+        delete_action.triggered.connect(self.delete_selected_tracks)
+        menu.exec(self.track_list.viewport().mapToGlobal(pos))
+
+    def delete_selected_tracks(self):
+        """Убирает выбранные треки из библиотеки (сам файл на диске не трогаем)."""
+        rows = sorted(
+            {self.track_list.row(item) for item in self.track_list.selectedItems()},
+            reverse=True,
+        )
+        if not rows:
+            return
+
+        removed_current_track = False
+        for row in rows:
+            if row == self.current_track_row:
+                removed_current_track = True
+            elif self.current_track_row != -1 and row < self.current_track_row:
+                self.current_track_row -= 1
+
+            self.track_list.takeItem(row)
+            del self.current_playlist[row]
+
+        if removed_current_track:
+            self.player.stop()
+            self.current_track_row = -1
+            self.now_playing_title.setText("Not Playing")
+            self.now_playing_artist.setText("Glide Ecosystem")
+            self.btn_play.setText("▶")
+            self.art_thumbnail.setPixmap(QPixmap())
+            self.art_thumbnail.setText("🎵")
+            self.progress_slider.setValue(0)
+            self.time_current.setText(self.format_time(0))
+            self.update_mpris_playback_status()
+
+        self.update_library_header()
+
+
         self.art_thumbnail.setPixmap(QPixmap())
         self.art_thumbnail.setText("🎵")
         self._art_request_id = self.artwork_loader.request(title, artist)
