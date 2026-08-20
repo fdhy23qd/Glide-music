@@ -23,11 +23,28 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        # requirements-windows.txt — без dbus-next (Linux/D-Bus-only, на Windows не нужен и не соберётся)
+        # На windows-runner'ах run: выполняется в PowerShell, который по
+        # умолчанию НЕ останавливает скрипт при ошибке внешней команды —
+        # поэтому проверяем $LASTEXITCODE вручную после каждого pip-вызова,
+        # иначе неудачный "pip install -r requirements-windows.txt"
+        # (например, файла нет в репозитории) тихо пропускается, и exe
+        # собирается без реальных зависимостей.
         run: |
+          $ErrorActionPreference = "Stop"
+
+          if (!(Test-Path "requirements-windows.txt")) {
+            Write-Error "requirements-windows.txt не найден в корне репозитория"
+            exit 1
+          }
+
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           pip install -r requirements-windows.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           pip install pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: List installed packages
         # диагностика: если тут нет pypresence/PyQt6/mutagen — дело в requirements-windows.txt,
