@@ -1,5 +1,4 @@
 PyQt6
-PyQt6-QtMultimedia
 mutagen
 pypresence
 # dbus-next намеренно не включён — это Linux/D-Bus-специфика (MPRIS),
