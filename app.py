@@ -29,13 +29,19 @@ from PyQt6.QtGui import (QFont, QColor, QPainter, QLinearGradient, QBrush, QPen,
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 import random
-
+import os
 # ВАЖНО: в присланном файле эти константы (SVG-разметка иконок) нигде не
 # определялись и не импортировались — из-за этого падал уже init_toolbar()
 # при самом первом запуске (NameError). Замени "icons" на реальное имя
 # модуля с этими константами в твоём проекте.
 
-
+def resource_path(relative_path):
+    """Возвращает путь к ресурсу, учитывая распаковку PyInstaller во временную папку"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def svg_icon(svg_xml: str, size=24, color="#F5F5F5") -> QIcon:
     pixmap = QPixmap(size, size)
@@ -351,11 +357,11 @@ class GlideMusicModern(QMainWindow):
         # QSvgRenderer получал невалидный XML и рисовал пустоту, кнопки
         # выглядели как исчезнувшие. Остальные иконки в проекте уже
         # грузятся как файлы через QIcon(path) — приводим и эти три к тому же.
-        self.btn_min.setIcon(QIcon(QPixmap("icons/MIN_ICON_SVG.svg").scaled(
+        self.btn_min.setIcon(QIcon(QPixmap(resource_path("icons/MIN_ICON_SVG.svg")).scaled(
             12, 12, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
-        self.btn_max.setIcon(QIcon(QPixmap("icons/MAX_ICON_SVG.svg").scaled(
+        self.btn_max.setIcon(QIcon(QPixmap(resource_path("icons/MAX_ICON_SVG.svg")).scaled(
             12, 12, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
-        self.btn_close.setIcon(QIcon(QPixmap("icons/CLOSE_ICON_SVG.svg").scaled(
+        self.btn_close.setIcon(QIcon(QPixmap(resource_path("icons/CLOSE_ICON_SVG.svg")).scaled(
             12, 12, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
 
         for btn in [self.btn_min, self.btn_max, self.btn_close]:
@@ -400,7 +406,7 @@ class GlideMusicModern(QMainWindow):
             print(f"Ошибка загрузки SVG: {svg_path}")
 
         # 3. Перекрашиваем через SourceIn, как было в твоем коде
-        tinted = QPixmap(base.size())
+        tinted = QPixmap(resource_path(base.size()))
         tinted.fill(Qt.GlobalColor.transparent)
         painter = QPainter(tinted)
         painter.drawPixmap(0, 0, base)
@@ -664,7 +670,7 @@ class GlideMusicModern(QMainWindow):
         self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_add.setFixedWidth(126)
         self.btn_add.setToolTip("Добавить аудиофайлы в библиотеку")
-        self.btn_add.setIcon(QIcon(QPixmap("icons/ADD_ICON_SVG.svg").scaled(
+        self.btn_add.setIcon(QIcon(QPixmap(resource_path("icons/ADD_ICON_SVG.svg")).scaled(
             14, 14, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
         self.btn_add.setIconSize(QSize(14, 14))
 
@@ -707,7 +713,7 @@ class GlideMusicModern(QMainWindow):
         self.art_thumbnail.setObjectName("artThumbnail")
         self.art_thumbnail.setFixedSize(58, 58)
         self.art_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.art_thumbnail.setPixmap(QPixmap("icons/MUSIC_ICON_SVG.svg").scaled(
+        self.art_thumbnail.setPixmap(QPixmap(resource_path("icons/MUSIC_ICON_SVG.svg")).scaled(
                 28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             ))
 
@@ -1080,7 +1086,7 @@ class GlideMusicModern(QMainWindow):
             self.player.stop()
             self.now_playing_title.setText("Not Playing")
             self.now_playing_artist.setText("Glide Ecosystem")
-            self.art_thumbnail.setPixmap(QPixmap("icons/MUSIC_ICON_SVG.svg").scaled(
+            self.art_thumbnail.setPixmap(QPixmap(resource_path("icons/MUSIC_ICON_SVG.svg")).scaled(
                 28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             ))
 
@@ -1114,7 +1120,7 @@ class GlideMusicModern(QMainWindow):
         # отсюда AttributeError и падение.
         pixmap = QPixmap()
         if not data or not pixmap.loadFromData(data):
-            self.art_thumbnail.setPixmap(QPixmap("icons/MUSIC_ICON_SVG.svg").scaled(
+            self.art_thumbnail.setPixmap(QPixmap(resource_path("icons/MUSIC_ICON_SVG.svg")).scaled(
                 28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             ))
             return
