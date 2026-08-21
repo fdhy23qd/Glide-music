@@ -382,15 +382,24 @@ class GlideMusicModern(QMainWindow):
         self.toolbar.addWidget(self.btn_max)
         self.toolbar.addWidget(self.btn_close)
 
-    def set_button_icon(self, button, svg, size=18, color="#F5F5F5"):
+    def set_button_icon(self, button, svg_path, size=18, color="#F5F5F5"):
         button.setText("")
-        # color раньше ничего не делал: после перехода на загрузку иконок
-        # из файлов пиксмап просто рисовался как есть, без перекраски —
-        # поэтому не было видно, включён шаффл/повтор или нет. Перекрашиваем
-        # загруженный пиксмап через SourceIn, используя его альфа-канал.
-        base = QPixmap(svg).scaled(
-            size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-        )
+
+        # 1. Создаем прозрачную базу нужного размера
+        base = QPixmap(size, size)
+        base.fill(Qt.GlobalColor.transparent)
+
+        # 2. Рендерим SVG из файла с помощью QSvgRenderer
+        renderer = QSvgRenderer(svg_path)
+        if renderer.isValid():
+            painter = QPainter(base)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            renderer.render(painter)
+            painter.end()
+        else:
+            print(f"Ошибка загрузки SVG: {svg_path}")
+
+        # 3. Перекрашиваем через SourceIn, как было в твоем коде
         tinted = QPixmap(base.size())
         tinted.fill(Qt.GlobalColor.transparent)
         painter = QPainter(tinted)
@@ -398,6 +407,7 @@ class GlideMusicModern(QMainWindow):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
         painter.fillRect(tinted.rect(), QColor(color))
         painter.end()
+
         button.setIcon(QIcon(tinted))
         button.setIconSize(QSize(size, size))
 
