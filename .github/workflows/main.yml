@@ -53,7 +53,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --add-data "icons;icons" --collect-all PyQt6 --collect-all pypresence app.py
+          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --add-data "icons:icons" --collect-all PyQt6 --collect-all pypresence app.py
 
       - name: Verify build output
         run: |
