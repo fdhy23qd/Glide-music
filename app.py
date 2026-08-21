@@ -395,8 +395,8 @@ class GlideMusicModern(QMainWindow):
         base = QPixmap(size, size)
         base.fill(Qt.GlobalColor.transparent)
 
-        # 2. Рендерим SVG из файла с помощью QSvgRenderer
-        renderer = QSvgRenderer(svg_path)
+        # 2. Рендерим SVG из файла с помощью QSvgRenderer, используя resource_path для EXE
+        renderer = QSvgRenderer(resource_path(svg_path))
         if renderer.isValid():
             painter = QPainter(base)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -405,8 +405,8 @@ class GlideMusicModern(QMainWindow):
         else:
             print(f"Ошибка загрузки SVG: {svg_path}")
 
-        # 3. Перекрашиваем через SourceIn, как было в твоем коде
-        tinted = QPixmap(resource_path(base.size()))
+        # 3. Перекрашиваем через SourceIn (исправлен вызов QPixmap с размером base)
+        tinted = QPixmap(base.size())
         tinted.fill(Qt.GlobalColor.transparent)
         painter = QPainter(tinted)
         painter.drawPixmap(0, 0, base)
