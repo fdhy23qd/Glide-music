@@ -22,10 +22,13 @@ if MPRIS_AVAILABLE:
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QSlider, QLabel, QListWidget,
                              QFileDialog, QToolBar, QGraphicsOpacityEffect, QToolButton,
-                             QSizePolicy, QLineEdit, QSizeGrip, QAbstractItemView, QMenu)
-from PyQt6.QtCore import Qt, QUrl, QSettings, QTimer, QPropertyAnimation, QEvent, QSize, QByteArray
+                             QSizePolicy, QLineEdit, QSizeGrip, QAbstractItemView, QMenu,
+                             QTreeView)
+from PyQt6.QtCore import (Qt, QUrl, QSettings, QTimer, QPropertyAnimation, QEvent, QSize,
+                          QByteArray, QDir)
 from PyQt6.QtGui import (QFont, QColor, QPainter, QLinearGradient, QBrush, QPen,
-                         QTransform, QPixmap, QPainterPath, QShortcut, QKeySequence, QIcon)
+                         QTransform, QPixmap, QPainterPath, QShortcut, QKeySequence, QIcon,
+                         QFileSystemModel)
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 import random
@@ -224,6 +227,9 @@ class GlideMusicModern(QMainWindow):
         self.current_playlist = []
         self.current_track_row = -1
         self._last_volume = 100
+        # Папка, выбранная как корень дерева слева от списка треков.
+        # None, пока пользователь ни разу не нажал "Выбрать папку".
+        self.library_root = None
 
         self.artwork_loader = ArtworkLoader()
         self._art_request_id = 0
@@ -240,6 +246,15 @@ class GlideMusicModern(QMainWindow):
         self.init_shortcuts()
 
         self.load_saved_library()
+
+        # Если папка-библиотека уже выбиралась раньше — сразу строим по ней
+        # дерево и подтягиваем треки рекурсивно (заменяя ручной список из
+        # load_saved_library, как обычный музыкальный проигрыватель с папкой).
+        saved_root = self.settings.value("library_root", "")
+        if saved_root and Path(saved_root).is_dir():
+            self.set_library_root(saved_root)
+        else:
+            self.update_folder_panel_visibility()
 
         saved_volume = int(self.settings.value("volume", 100))
         self.volume_slider.setValue(saved_volume)
@@ -389,33 +404,33 @@ class GlideMusicModern(QMainWindow):
         self.toolbar.addWidget(self.btn_close)
 
     def set_button_icon(self, button, svg_path, size=18, color="#F5F5F5"):
-        button.setText("")
+            button.setText("")
 
-        # 1. Создаем прозрачную базу нужного размера
-        base = QPixmap(size, size)
-        base.fill(Qt.GlobalColor.transparent)
+            # 1. Создаем прозрачную базу нужного размера
+            base = QPixmap(size, size)
+            base.fill(Qt.GlobalColor.transparent)
 
-        # 2. Рендерим SVG из файла с помощью QSvgRenderer, используя resource_path для EXE
-        renderer = QSvgRenderer(resource_path(svg_path))
-        if renderer.isValid():
-            painter = QPainter(base)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            renderer.render(painter)
+            # 2. Рендерим SVG из файла с помощью QSvgRenderer, используя resource_path для EXE
+            renderer = QSvgRenderer(resource_path(svg_path))
+            if renderer.isValid():
+                painter = QPainter(base)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                renderer.render(painter)
+                painter.end()
+            else:
+                print(f"Ошибка загрузки SVG: {svg_path}")
+
+            # 3. Перекрашиваем через SourceIn (исправлен вызов QPixmap с размером base)
+            tinted = QPixmap(base.size())
+            tinted.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(tinted)
+            painter.drawPixmap(0, 0, base)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(tinted.rect(), QColor(color))
             painter.end()
-        else:
-            print(f"Ошибка загрузки SVG: {svg_path}")
 
-        # 3. Перекрашиваем через SourceIn (исправлен вызов QPixmap с размером base)
-        tinted = QPixmap(base.size())
-        tinted.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(tinted)
-        painter.drawPixmap(0, 0, base)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-        painter.fillRect(tinted.rect(), QColor(color))
-        painter.end()
-
-        button.setIcon(QIcon(tinted))
-        button.setIconSize(QSize(size, size))
+            button.setIcon(QIcon(tinted))
+            button.setIconSize(QSize(size, size))
 
     def _set_mode_button_active(self, button, active):
         # Единая подсветка для кнопок Shuffle/Loop: подсвечиваем не только
@@ -484,6 +499,7 @@ class GlideMusicModern(QMainWindow):
         self.player.mediaStatusChanged.connect(self.handle_media_status)
         self.player.playbackStateChanged.connect(self.update_mpris_playback_status)
         self.btn_add.clicked.connect(self.add_tracks)
+        self.btn_choose_folder.clicked.connect(self.choose_library_folder)
         self.btn_play.clicked.connect(self.toggle_playback)
         self.btn_next.clicked.connect(self.next_track)
         self.btn_prev.clicked.connect(self.prev_track)
@@ -680,19 +696,77 @@ class GlideMusicModern(QMainWindow):
         self.header_layout.addWidget(self.btn_add)
         self.content_layout.addLayout(self.header_layout)
 
+        # === ТЕЛО БИБЛИОТЕКИ: список треков слева + дерево папок справа ===
+        self.library_body_layout = QHBoxLayout()
+        self.library_body_layout.setSpacing(16)
+
+        self.library_column_layout = QVBoxLayout()
+        self.library_column_layout.setSpacing(16)
+
         self.track_list = QListWidget()
         self.track_list.setObjectName("modernList")
         self.track_list.setAlternatingRowColors(False)
         self.track_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.track_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.track_list.customContextMenuRequested.connect(self.show_track_context_menu)
-        self.content_layout.addWidget(self.track_list)
+        self.library_column_layout.addWidget(self.track_list)
 
-        self.empty_state = QLabel("Библиотека пуста\nНажми «Add Tracks», чтобы добавить музыку")
+        self.empty_state = QLabel("Библиотека пуста\nНажми «Add Tracks», чтобы добавить музыку,\nили выбери папку с музыкой справа")
         self.empty_state.setObjectName("emptyState")
         self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state.setVisible(False)
-        self.content_layout.addWidget(self.empty_state)
+        self.library_column_layout.addWidget(self.empty_state)
+
+        self.library_body_layout.addLayout(self.library_column_layout, 3)
+
+        # --- Правая колонка: дерево папок выбранной библиотеки ---
+        self.folder_panel = QWidget()
+        self.folder_panel.setObjectName("folderPanel")
+        self.folder_panel.setFixedWidth(240)
+        self.folder_panel_layout = QVBoxLayout(self.folder_panel)
+        self.folder_panel_layout.setContentsMargins(12, 12, 12, 12)
+        self.folder_panel_layout.setSpacing(10)
+
+        self.folder_header_layout = QHBoxLayout()
+        self.folder_header_label = QLabel("Папки")
+        self.folder_header_label.setObjectName("folderHeaderTitle")
+        self.btn_choose_folder = QToolButton()
+        self.btn_choose_folder.setObjectName("btnChooseFolder")
+        self.btn_choose_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_choose_folder.setText("...")
+        self.btn_choose_folder.setToolTip("Выбрать корневую папку с музыкой")
+        self.folder_header_layout.addWidget(self.folder_header_label)
+        self.folder_header_layout.addStretch()
+        self.folder_header_layout.addWidget(self.btn_choose_folder)
+        self.folder_panel_layout.addLayout(self.folder_header_layout)
+
+        # QFileSystemModel в PyQt6 живёт в QtGui, а не в QtWidgets (в Qt5
+        # было наоборот) — импортирован соответственно выше.
+        self.folder_model = QFileSystemModel()
+        self.folder_model.setFilter(QDir.Filter.NoDotAndDotDot | QDir.Filter.Dirs)
+
+        self.folder_tree = QTreeView()
+        self.folder_tree.setObjectName("folderTree")
+        self.folder_tree.setModel(self.folder_model)
+        self.folder_tree.setHeaderHidden(True)
+        # Показываем только колонку с именем — Size/Type/Date modified тут не нужны
+        for column in range(1, self.folder_model.columnCount()):
+            self.folder_tree.hideColumn(column)
+        self.folder_tree.setAnimated(True)
+        self.folder_tree.setUniformRowHeights(True)
+        self.folder_tree.clicked.connect(self.on_folder_tree_selected)
+        self.folder_panel_layout.addWidget(self.folder_tree)
+
+        # Плейсхолдер, пока корневая папка ещё не выбрана
+        self.folder_placeholder = QLabel("Нажми «...», чтобы\nвыбрать папку с музыкой")
+        self.folder_placeholder.setObjectName("folderPlaceholder")
+        self.folder_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.folder_placeholder.setWordWrap(True)
+        self.folder_panel_layout.addWidget(self.folder_placeholder)
+
+        self.library_body_layout.addWidget(self.folder_panel, 0)
+
+        self.content_layout.addLayout(self.library_body_layout)
 
         self.main_layout.addWidget(self.content_widget)
 
@@ -953,6 +1027,62 @@ class GlideMusicModern(QMainWindow):
             border-color: rgba(255, 255, 255, 0.18);
         }
 
+        QWidget#folderPanel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+        }
+
+        QLabel#folderHeaderTitle {
+            font-size: 13px;
+            font-weight: 700;
+            color: #e5e7eb;
+            letter-spacing: 0.02em;
+        }
+
+        QToolButton#btnChooseFolder {
+            background: rgba(255, 255, 255, 0.04);
+            color: #f5f5f5;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        QToolButton#btnChooseFolder:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        QLabel#folderPlaceholder {
+            color: #a1a1aa;
+            font-size: 12px;
+            padding-top: 30px;
+        }
+
+        QTreeView#folderTree {
+            background: transparent;
+            color: #e5e7eb;
+            border: none;
+            font-size: 13px;
+            outline: none;
+        }
+        QTreeView#folderTree::item {
+            padding: 6px 4px;
+            border-radius: 8px;
+        }
+        QTreeView#folderTree::item:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+        QTreeView#folderTree::item:selected {
+            background: rgba(255, 255, 255, 0.08);
+            color: #7B61FF;
+            font-weight: 700;
+        }
+        QTreeView#folderTree::branch {
+            background: transparent;
+        }
+
         QWidget#bottomBar {
             background: rgba(17, 17, 17, 0.96);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1043,6 +1173,88 @@ class GlideMusicModern(QMainWindow):
         self.setStyleSheet(qss)
 
     # --- Ранее вызывались, но нигде не были определены (AttributeError при первом же запуске) ---
+
+    # --- Библиотека по папке: дерево справа от списка треков ---
+
+    # Те же расширения, что и в диалоге add_tracks() и в track_tags.py
+    _LIBRARY_AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".m4a"}
+
+    def choose_library_folder(self):
+        start_dir = self.library_root or self.settings.value("last_folder", "")
+        folder = QFileDialog.getExistingDirectory(
+            self, "Выберите папку с музыкой", start_dir
+        )
+        if folder:
+            self.set_library_root(folder)
+
+    def set_library_root(self, folder):
+        """Делает folder корнем дерева справа и сразу показывает все треки
+        из неё и всех вложенных подпапок (рекурсивно)."""
+        self.library_root = folder
+        self.settings.setValue("library_root", folder)
+
+        self.folder_model.setRootPath(folder)
+        root_index = self.folder_model.index(folder)
+        # setRootIndex ставим на РОДИТЕЛЯ выбранной папки, а не на саму
+        # папку — иначе сама папка (единственный узел, по которому нужно
+        # уметь кликнуть, чтобы получить "всё дерево целиком") пропадает
+        # из дерева и остаётся видно только её содержимое. Так папка сама
+        # видна как узел (наравне с соседними папками в этом расположении)
+        # и её можно выделить и развернуть.
+        self.folder_tree.setRootIndex(root_index.parent())
+        self.folder_tree.setCurrentIndex(root_index)
+        self.folder_tree.expand(root_index)
+
+        self.update_folder_panel_visibility()
+        # Клик по корню = показать всё дерево целиком, поэтому просто
+        # запускаем тот же рекурсивный скан от корневой папки.
+        self.load_tracks_from_folder(folder)
+
+    def update_folder_panel_visibility(self):
+        has_root = bool(self.library_root)
+        self.folder_tree.setVisible(has_root)
+        self.folder_placeholder.setVisible(not has_root)
+
+    def on_folder_tree_selected(self, index):
+        """Клик по любому узлу дерева (в т.ч. по самому корню) — показываем
+        треки, лежащие в этой папке и во всех её подпапках рекурсивно."""
+        if not self.folder_model.isDir(index):
+            return
+        folder_path = self.folder_model.filePath(index)
+        self.load_tracks_from_folder(folder_path)
+
+    def load_tracks_from_folder(self, folder_path):
+        """Рекурсивно (os.walk) собирает аудиофайлы под folder_path и
+        подставляет их в track_list/current_playlist вместо текущего
+        содержимого — это и есть "фильтр по выбранной папке дерева".
+        Список не пишется в settings["library"]: он всегда вычисляется
+        заново из файловой системы при переключении узла дерева."""
+        found = []
+        for root, dirs, files in os.walk(folder_path):
+            dirs.sort()
+            for name in sorted(files):
+                if Path(name).suffix.lower() in self._LIBRARY_AUDIO_EXTS:
+                    found.append(str(Path(root) / name))
+
+        # Если что-то уже играло — пытаемся не терять текущий трек,
+        # если он остался в новой рекурсивной выборке (как в delete_selected_tracks)
+        playing_path = None
+        if 0 <= self.current_track_row < len(self.current_playlist):
+            playing_path = self.current_playlist[self.current_track_row]
+
+        self.current_playlist = found
+        self.track_list.clear()
+        for file_path in found:
+            relative = os.path.relpath(file_path, folder_path).replace(os.sep, "/")
+            self.track_list.addItem(relative)
+
+        if playing_path in self.current_playlist:
+            self.current_track_row = self.current_playlist.index(playing_path)
+            self.mark_current_track(self.current_track_row)
+        else:
+            self.current_track_row = -1
+
+        self.update_library_header()
 
     def load_saved_library(self):
         saved = self.settings.value("library", [])
