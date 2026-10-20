@@ -44,6 +44,18 @@ def wait(app, cond, timeout=8.0):
     return cond()
 
 
+def user32():
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    W = ctypes.wintypes
+    u.GetWindowLongPtrW.argtypes = [W.HWND, ctypes.c_int]
+    u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    u.PostMessageW.argtypes = [W.HWND, W.UINT, W.WPARAM, W.LPARAM]
+    u.PostMessageW.restype = W.BOOL
+    u.RegisterHotKey.argtypes = [W.HWND, ctypes.c_int, W.UINT, W.UINT]
+    u.UnregisterHotKey.argtypes = [W.HWND, ctypes.c_int]
+    return u
+
+
 def main():
     print("шаг: старт", flush=True)
     music = Path(sys.argv[1])
@@ -96,20 +108,20 @@ def main():
     w.set_mini_visible(True)
     wait(app, lambda: w.mini.isVisible(), 2)
     hwnd = int(w.mini.winId())
-    exstyle = ctypes.windll.user32.GetWindowLongW(hwnd, -20)   # GWL_EXSTYLE
+    exstyle = user32().GetWindowLongPtrW(hwnd, -20)   # GWL_EXSTYLE
     report("мини-плеер поверх всех окон (WS_EX_TOPMOST)", bool(exstyle & 0x8), hex(exstyle))
     report("разбор клавиши Ctrl+Alt+M", hotkey_to_windows("Ctrl+Alt+M") == (0x4000 | 0x1 | 0x2, ord("M")),
            hotkey_to_windows("Ctrl+Alt+M"))
     report("разбор клавиши Ctrl+Shift+F9", hotkey_to_windows("Ctrl+Shift+F9") == (0x4000 | 0x2 | 0x4, 0x78),
            hotkey_to_windows("Ctrl+Shift+F9"))
     ok = w.mini.register_hotkey("Ctrl+Alt+Shift+F11")
-    report("RegisterHotKey", ok, ctypes.GetLastError())
+    report("RegisterHotKey", ok, ctypes.get_last_error())
     collapsed = w.mini.collapsed
-    ctypes.windll.user32.PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)   # как будто нажали клавишу
+    user32().PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)   # как будто нажали клавишу
     report("WM_HOTKEY сворачивает/разворачивает", wait(app, lambda: w.mini.collapsed != collapsed, 3))
     wait(app, lambda: w.mini.anim.state() != w.mini.anim.State.Running, 2)
     w.mini.grab().save(str(shots / ("mini-strip.png" if w.mini.collapsed else "mini.png")))
-    ctypes.windll.user32.PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)
+    user32().PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)
     wait(app, lambda: w.mini.collapsed == collapsed, 3)
     wait(app, lambda: w.mini.anim.state() != w.mini.anim.State.Running, 2)
     wait(app, lambda: False, 0.6)
@@ -117,9 +129,9 @@ def main():
     w.grab().save(str(shots / "main.png"))
     w.mini.unregister_hotkey()
     # снятая клавиша снова свободна
-    again = ctypes.windll.user32.RegisterHotKey(None, 77, 0x4000 | 0x1 | 0x2 | 0x4, 0x7A)
+    again = user32().RegisterHotKey(None, 77, 0x4000 | 0x1 | 0x2 | 0x4, 0x7A)
     report("UnregisterHotKey освобождает клавишу", bool(again))
-    ctypes.windll.user32.UnregisterHotKey(None, 77)
+    user32().UnregisterHotKey(None, 77)
     w.close()
     s.clear()
     print(f"\nпровалено: {failed}")

@@ -22,6 +22,19 @@ STRIP = QSize(150, 12)
 WM_HOTKEY = 0x0312
 HOTKEY_ID = 0x4D50   # «MP»
 
+def _user32():
+    """user32 с объявленными типами: без argtypes ctypes передаёт HWND (указатель) как 32-битный int —
+    на 64-битной Windows это access violation прямо при запуске."""
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+    u.RegisterHotKey.restype = wintypes.BOOL
+    u.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.UnregisterHotKey.restype = wintypes.BOOL
+    return u
+
+
 # Qt-клавиша → виртуальный код Windows
 _VK = {Qt.Key.Key_Space: 0x20, Qt.Key.Key_Left: 0x25, Qt.Key.Key_Up: 0x26, Qt.Key.Key_Right: 0x27,
        Qt.Key.Key_Down: 0x28, Qt.Key.Key_Home: 0x24, Qt.Key.Key_End: 0x23, Qt.Key.Key_PageUp: 0x21,
@@ -284,17 +297,15 @@ class MiniPlayer(QWidget):
         parsed = hotkey_to_windows(text)
         if parsed is None:
             return False
-        import ctypes
         mods, vk = parsed
         hwnd = int(self.winId())   # окно создаётся здесь, даже если скрыто
-        ok = bool(ctypes.windll.user32.RegisterHotKey(hwnd, HOTKEY_ID, mods, vk))
+        ok = bool(_user32().RegisterHotKey(hwnd, HOTKEY_ID, mods, vk))
         self._hotkey_registered = ok
         return ok
 
     def unregister_hotkey(self):
         if IS_WINDOWS and self._hotkey_registered:
-            import ctypes
-            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), HOTKEY_ID)
+            _user32().UnregisterHotKey(int(self.winId()), HOTKEY_ID)
         self._hotkey_registered = False
 
     def nativeEvent(self, event_type, message):
