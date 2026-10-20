@@ -33,6 +33,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 import random
 import os
+import hashlib
 # ВАЖНО: в присланном файле эти константы (SVG-разметка иконок) нигде не
 # определялись и не импортировались — из-за этого падал уже init_toolbar()
 # при самом первом запуске (NameError). Замени "icons" на реальное имя
@@ -1342,6 +1343,25 @@ class GlideMusicModern(QMainWindow):
             Qt.TransformationMode.SmoothTransformation,
         )
         self.art_thumbnail.setPixmap(rounded_pixmap(scaled, radius=10))
+        self.publish_artwork_to_mpris(data)
+
+    def publish_artwork_to_mpris(self, data):
+        """Кладёт обложку в кэш и отдаёт её в MPRIS (mpris:artUrl) — так её видят остров
+        Glide Shell и другие системные плееры без повторного скачивания."""
+        if self.mpris_interface is None:
+            return
+        cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "glide-music" / "covers"
+        try:
+            cache.mkdir(parents=True, exist_ok=True)
+            path = cache / (hashlib.sha1(data).hexdigest()[:16] + ".jpg")
+            if not path.exists():
+                path.write_bytes(data)
+                covers = sorted(cache.glob("*.jpg"), key=lambda p: p.stat().st_mtime)
+                for old in covers[:-50]:   # храним не больше 50 обложек
+                    old.unlink(missing_ok=True)
+        except OSError:
+            return
+        self.mpris_interface.set_art_url(path.as_uri())
 
     def eventFilter(self, obj, event):
         # Перетаскивание окна за пустое место тулбара — нужно, т.к. окно

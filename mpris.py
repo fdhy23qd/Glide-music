@@ -129,6 +129,7 @@ class MPRISPlayer(ServiceInterface):
         self.title = "Glide Music"
         self.artist = ["Glide Music"]
         self.length = 0
+        self.art_url = ""   # file:// обложки из кэша; пусто — обложки нет
         self._status = "Stopped"
         self._position = 0
 
@@ -181,12 +182,15 @@ class MPRISPlayer(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def Metadata(self) -> "a{sv}":
-        return {
+        meta = {
             "mpris:trackid": Variant("o", "/org/mpris/MediaPlayer2/TrackList/0"),
             "xesam:title": Variant("s", self.title),
             "xesam:artist": Variant("as", self.artist),
             "mpris:length": Variant("x", int(self.length) * 1000),
         }
+        if self.art_url:   # обложка для системных плееров (остров Glide Shell, KDE, GNOME)
+            meta["mpris:artUrl"] = Variant("s", self.art_url)
+        return meta
 
     @dbus_property(access=PropertyAccess.READ)
     def Position(self) -> "x":
@@ -235,9 +239,19 @@ class MPRISPlayer(ServiceInterface):
     # --- эти методы вызываются из GUI-потока (из app.py) ---
 
     def set_track_info(self, title, artist, duration=0):
-        self.title = title or "Glide Music"
-        self.artist = [artist] if isinstance(artist, str) else artist or ["Glide Music"]
+        title = title or "Glide Music"
+        artist = [artist] if isinstance(artist, str) else artist or ["Glide Music"]
+        if (title, artist) != (self.title, self.artist):
+            self.art_url = ""   # новый трек — старая обложка ему не подходит
+        self.title = title
+        self.artist = artist
         self.length = int(duration or 0)
+        self._notify({"Metadata": self.Metadata})
+
+    def set_art_url(self, url):
+        if url == self.art_url:
+            return
+        self.art_url = url
         self._notify({"Metadata": self.Metadata})
 
     def set_playback_status(self, status):

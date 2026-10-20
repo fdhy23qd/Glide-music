@@ -1,0 +1,17 @@
+# окружения и сборки
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+
+# личное и секреты — никогда в публичный репозиторий
+steler.py
+music.txt
+my_music.txt
+*.token
+.env
+Рисунок*.png
