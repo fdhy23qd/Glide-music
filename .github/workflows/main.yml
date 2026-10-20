@@ -26,34 +26,34 @@ jobs:
         # На windows-runner'ах run: выполняется в PowerShell, который по
         # умолчанию НЕ останавливает скрипт при ошибке внешней команды —
         # поэтому проверяем $LASTEXITCODE вручную после каждого pip-вызова,
-        # иначе неудачный "pip install -r requirements-windows.txt"
+        # иначе неудачный "pip install -r requirements.txt"
         # (например, файла нет в репозитории) тихо пропускается, и exe
         # собирается без реальных зависимостей.
         run: |
           $ErrorActionPreference = "Stop"
 
-          if (!(Test-Path "requirements-windows.txt")) {
-            Write-Error "requirements-windows.txt не найден в корне репозитория"
+          if (!(Test-Path "requirements.txt")) {
+            Write-Error "requirements.txt не найден в корне репозитория"
             exit 1
           }
 
           python -m pip install --upgrade pip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          pip install -r requirements-windows.txt
+          pip install -r requirements.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           pip install pyinstaller
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: List installed packages
-        # диагностика: если тут нет pypresence/PyQt6/mutagen — дело в requirements-windows.txt,
+        # диагностика: если тут нет pypresence/PyQt6/mutagen — дело в requirements.txt,
         # а не в PyInstaller, и следующий шаг тоже упадёт
         run: pip list
 
       - name: Build EXE
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --add-data "icons:icons" --collect-all PyQt6 --collect-all pypresence --icon=icons/logo.ico app.py
+          pyinstaller --noconfirm --onefile --windowed --name GlideMusic --add-data "icons:icons" --collect-all PyQt6 --collect-all pypresence --collect-all winrt --icon=icons/logo.ico app.py
 
       - name: Verify build output
         run: |

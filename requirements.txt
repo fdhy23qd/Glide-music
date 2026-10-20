@@ -1,0 +1,15 @@
+# Glide Music — одни зависимости на Linux и Windows; системные — по условию платформы.
+PyQt6>=6.6
+mutagen>=1.47
+pypresence>=4.3
+
+# Linux: MPRIS (медиаклавиши, остров Glide Shell, плееры KDE/GNOME)
+dbus-next>=0.2.3; sys_platform == "linux"
+
+# Windows: SMTC (плашка «Сейчас играет», медиаклавиши, экран блокировки)
+winrt-runtime>=2.0; sys_platform == "win32"
+winrt-Windows.Foundation>=2.0; sys_platform == "win32"
+winrt-Windows.Media>=2.0; sys_platform == "win32"
+winrt-Windows.Media.Playback>=2.0; sys_platform == "win32"
+winrt-Windows.Storage>=2.0; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=2.0; sys_platform == "win32"

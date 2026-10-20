@@ -1,0 +1,56 @@
+name: Tests
+
+# Проверка на обеих системах при каждом пуше: Windows — SMTC, горячая клавиша, «поверх всех»;
+# Linux — MPRIS через настоящую сессионную шину. Снимки окон — в артефактах прогона.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt imageio-ffmpeg
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test music
+        run: python tests/make_test_music.py "$env:RUNNER_TEMP\music"
+      - name: Smoke test (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/smoke_test.py "$env:RUNNER_TEMP\music"
+      - name: Windows test (SMTC, hotkey, topmost)
+        run: python tests/windows_test.py "$env:RUNNER_TEMP\music" "$env:RUNNER_TEMP\shots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-shots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg playerctl dbus libegl1 libxkbcommon0 libgl1 libpulse0 libfontconfig1
+          pip install -r requirements.txt
+      - name: Test music
+        run: QT_QPA_PLATFORM=offscreen python tests/make_test_music.py "$RUNNER_TEMP/music"
+      - name: Smoke test (offscreen, MPRIS on a session bus)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dbus-run-session -- python tests/smoke_test.py "$RUNNER_TEMP/music"
