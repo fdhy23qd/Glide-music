@@ -9,6 +9,12 @@ QSettings и %LOCALAPPDATA% подменяет сам тест), GLIDE_MUSIC_NO_
 import os
 import subprocess
 import sys
+
+for _s in (sys.stdout, sys.stderr):   # консоль Windows — не UTF-8
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 import time
 from pathlib import Path
 

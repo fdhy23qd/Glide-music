@@ -1218,7 +1218,17 @@ class GlideMusicModern(QMainWindow):
         """)
 
 
+def utf8_console():
+    """Консоль Windows (cp1252/cp866) не печатает кириллицу — сообщения падали бы с UnicodeEncodeError."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass   # в собранном --windowed exe потоков нет вовсе
+
+
 if __name__ == "__main__":
+    utf8_console()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName("Glide Music")
