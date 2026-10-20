@@ -45,6 +45,7 @@ def wait(app, cond, timeout=8.0):
 
 
 def main():
+    print("шаг: старт", flush=True)
     music = Path(sys.argv[1])
     shots = Path(sys.argv[2])
     shots.mkdir(parents=True, exist_ok=True)
@@ -55,11 +56,14 @@ def main():
     s.sync()
 
     app = QApplication(sys.argv)
+    print("шаг: QApplication, платформа", app.platformName(), flush=True)
     import app as gm
+    print("шаг: импорт приложения", flush=True)
     from mini_player import HOTKEY_ID, WM_HOTKEY, hotkey_to_windows
 
     w = gm.GlideMusicModern()
     w.show()
+    print("шаг: окно создано", flush=True)
 
     # ---- SMTC ----
     report("системный плеер — SMTC", w.session.name == "SMTC", type(w.session).__name__)

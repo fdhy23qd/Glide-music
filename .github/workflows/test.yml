@@ -31,7 +31,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/smoke_test.py "$env:RUNNER_TEMP\music"
       - name: Windows test (SMTC, hotkey, topmost)
-        run: python tests/windows_test.py "$env:RUNNER_TEMP\music" "$env:RUNNER_TEMP\shots"
+        env:
+          QT_FORCE_STDERR_LOGGING: "1"
+        run: python -X faulthandler tests/windows_test.py "$env:RUNNER_TEMP\music" "$env:RUNNER_TEMP\shots"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
