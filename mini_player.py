@@ -4,14 +4,17 @@
 полоску, щелчок по полоске — разворачивает. Тянуть — переносить. Положение и состояние
 запоминаются.
 
-Глобальная горячая клавиша (только Windows): RegisterHotKey на окно мини-плеера — Windows
-присылает ему WM_HOTKEY, даже когда фокус в другой программе. Клавиша сворачивает и
-разворачивает плеер (если он скрыт — показывает).
+Глобальная горячая клавиша (только Windows): RegisterHotKey без окна — Windows присылает
+WM_HOTKEY в поток приложения, даже когда фокус в другой программе; его ловит фильтр
+сообщений приложения. (Переопределять QWidget.nativeEvent нельзя: в PyQt6 на Windows это
+роняет процесс при создании окна — проверено в CI.) Клавиша сворачивает и разворачивает
+плеер (если он скрыт — показывает).
 """
 
 import sys
 
-from PyQt6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import (QAbstractNativeEventFilter, QCoreApplication, QEasingCurve, QPoint,
+                          QPropertyAnimation, QRect, QSize, Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QLayout, QPushButton, QVBoxLayout, QWidget
 
@@ -33,6 +36,23 @@ def _user32():
     u.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
     u.UnregisterHotKey.restype = wintypes.BOOL
     return u
+
+
+class _HotkeyFilter(QAbstractNativeEventFilter):
+    """Ловит WM_HOTKEY в очереди потока (RegisterHotKey с окном NULL)."""
+
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+
+    def nativeEventFilter(self, event_type, message):
+        if event_type == b"windows_generic_MSG":
+            import ctypes.wintypes
+            msg = ctypes.wintypes.MSG.from_address(int(message))
+            if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
+                self.callback()
+                return True, 0
+        return False, 0
 
 
 # Qt-клавиша → виртуальный код Windows
@@ -297,25 +317,19 @@ class MiniPlayer(QWidget):
         parsed = hotkey_to_windows(text)
         if parsed is None:
             return False
+        if getattr(self, "_filter", None) is None:
+            self._filter = _HotkeyFilter(self.on_hotkey)
+            QCoreApplication.instance().installNativeEventFilter(self._filter)
         mods, vk = parsed
-        hwnd = int(self.winId())   # окно создаётся здесь, даже если скрыто
-        ok = bool(_user32().RegisterHotKey(hwnd, HOTKEY_ID, mods, vk))
+        # без окна: WM_HOTKEY придёт в очередь потока, его поймает фильтр приложения
+        ok = bool(_user32().RegisterHotKey(None, HOTKEY_ID, mods, vk))
         self._hotkey_registered = ok
         return ok
 
     def unregister_hotkey(self):
         if IS_WINDOWS and self._hotkey_registered:
-            _user32().UnregisterHotKey(int(self.winId()), HOTKEY_ID)
+            _user32().UnregisterHotKey(None, HOTKEY_ID)
         self._hotkey_registered = False
-
-    def nativeEvent(self, event_type, message):
-        if IS_WINDOWS and event_type == b"windows_generic_MSG":
-            import ctypes.wintypes
-            msg = ctypes.wintypes.MSG.from_address(int(message))
-            if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
-                self.on_hotkey()
-                return True, 0
-        return super().nativeEvent(event_type, message)
 
     def on_hotkey(self):
         if not self.isVisible():

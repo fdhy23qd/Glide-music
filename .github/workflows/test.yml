@@ -30,9 +30,6 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tests/smoke_test.py "$env:RUNNER_TEMP\music"
-      - name: Diagnostics (window creation)
-        continue-on-error: true
-        run: python tests/win_diag.py
       - name: Windows test (SMTC, hotkey, topmost)
         env:
           QT_FORCE_STDERR_LOGGING: "1"

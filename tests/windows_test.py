@@ -49,8 +49,8 @@ def user32():
     W = ctypes.wintypes
     u.GetWindowLongPtrW.argtypes = [W.HWND, ctypes.c_int]
     u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
-    u.PostMessageW.argtypes = [W.HWND, W.UINT, W.WPARAM, W.LPARAM]
-    u.PostMessageW.restype = W.BOOL
+    u.PostThreadMessageW.argtypes = [W.DWORD, W.UINT, W.WPARAM, W.LPARAM]
+    u.PostThreadMessageW.restype = W.BOOL
     u.RegisterHotKey.argtypes = [W.HWND, ctypes.c_int, W.UINT, W.UINT]
     u.UnregisterHotKey.argtypes = [W.HWND, ctypes.c_int]
     return u
@@ -117,11 +117,11 @@ def main():
     ok = w.mini.register_hotkey("Ctrl+Alt+Shift+F11")
     report("RegisterHotKey", ok, ctypes.get_last_error())
     collapsed = w.mini.collapsed
-    user32().PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)   # как будто нажали клавишу
+    user32().PostThreadMessageW(ctypes.windll.kernel32.GetCurrentThreadId(), WM_HOTKEY, HOTKEY_ID, 0)   # как будто нажали клавишу
     report("WM_HOTKEY сворачивает/разворачивает", wait(app, lambda: w.mini.collapsed != collapsed, 3))
     wait(app, lambda: w.mini.anim.state() != w.mini.anim.State.Running, 2)
     w.mini.grab().save(str(shots / ("mini-strip.png" if w.mini.collapsed else "mini.png")))
-    user32().PostMessageW(hwnd, WM_HOTKEY, HOTKEY_ID, 0)
+    user32().PostThreadMessageW(ctypes.windll.kernel32.GetCurrentThreadId(), WM_HOTKEY, HOTKEY_ID, 0)
     wait(app, lambda: w.mini.collapsed == collapsed, 3)
     wait(app, lambda: w.mini.anim.state() != w.mini.anim.State.Running, 2)
     wait(app, lambda: False, 0.6)
