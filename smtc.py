@@ -95,6 +95,14 @@ class SmtcSession:
         tl.position = datetime.timedelta(milliseconds=int(position_ms or 0))
         self.smtc.update_timeline_properties(tl)
 
+    def set_modes(self, shuffle, loop):
+        from winrt.windows.media import MediaPlaybackAutoRepeatMode as Repeat
+        try:
+            self.smtc.shuffle_enabled = bool(shuffle)
+            self.smtc.auto_repeat_mode = {"one": Repeat.TRACK, "all": Repeat.LIST}.get(loop, Repeat.NONE)
+        except Exception as e:
+            print("SMTC: режимы не встали:", e)
+
     def set_cover(self, path, url):
         """Обложка: https-ссылка (iTunes) — сразу; иначе файл из кэша (асинхронно, StorageFile)."""
         from winrt.windows.foundation import Uri

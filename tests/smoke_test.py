@@ -101,6 +101,14 @@ def main():
         report("MPRIS: «вперёд» листает список", wait(app, lambda: w.current_track_row != before, 4))
         mpris("previous")
         report("MPRIS: «назад» возвращает", wait(app, lambda: w.current_track_row == before, 4))
+        mpris("shuffle", "On")
+        report("MPRIS: перемешивание включается извне", wait(app, lambda: w.is_shuffled, 3))
+        mpris("loop", "Track")
+        report("MPRIS: повтор трека извне", wait(app, lambda: w.is_looped == "one", 3))
+        report("MPRIS: видит режимы", mpris("shuffle") == "On" and mpris("loop") == "Track", f"{mpris('shuffle')} {mpris('loop')}")
+        mpris("shuffle", "Off")
+        mpris("loop", "None")
+        wait(app, lambda: not w.is_shuffled and not w.is_looped, 3)
     else:
         report(f"системный плеер: {w.session.name or 'нет'}", w.session.name == "SMTC", type(w.session).__name__)
 

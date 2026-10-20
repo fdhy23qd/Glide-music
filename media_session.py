@@ -25,6 +25,8 @@ class MediaCommands(QObject):
     previous = pyqtSignal()
     seek = pyqtSignal(int)          # абсолютная позиция, мс
     raise_window = pyqtSignal()
+    set_shuffle = pyqtSignal(bool)
+    set_loop = pyqtSignal(str)      # "" | "one" | "all"
 
 
 class NullSession:
@@ -38,6 +40,7 @@ class NullSession:
     def set_status(self, status): pass
     def set_position(self, position_ms, seeked=False): pass
     def set_cover(self, path, url): pass
+    def set_modes(self, shuffle, loop): pass
     def close(self): pass
 
 
@@ -92,6 +95,9 @@ class MprisSession(NullSession):
             player = self._player
         if player is not None:   # позицию не копим: важна только текущая
             player.set_position(position_ms, seeked)
+
+    def set_modes(self, shuffle, loop):
+        self._call(lambda p: p.set_modes(shuffle, loop))
 
     def set_cover(self, path, url):
         # своему файлу — file://, его читает и остров Glide Shell без сети

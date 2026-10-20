@@ -99,6 +99,12 @@ def main():
         w.session.set_cover(None, "https://is1-ssl.mzstatic.com/image/thumb/Music/v4/00/00/00/x/600x600bb.jpg")
         report("SMTC: обложка по ссылке", w.session.updater.thumbnail is not None)
         report("SMTC: кнопки включены", w.session.smtc.is_next_enabled and w.session.smtc.is_play_enabled)
+        w.toggle_shuffle()
+        w.set_loop_mode("all")
+        report("SMTC: режимы перемешивания и повтора", w.session.smtc.shuffle_enabled and int(w.session.smtc.auto_repeat_mode) == 2,
+               f"{w.session.smtc.shuffle_enabled} {w.session.smtc.auto_repeat_mode}")
+        w.toggle_shuffle()
+        w.set_loop_mode("")
         # нажатие кнопки системы → команда окну
         before = w.current_track_row
         w.session.commands.next.emit()

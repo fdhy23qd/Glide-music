@@ -72,6 +72,8 @@ class MPRISPlayer(ServiceInterface):
         self.track_no = 0
         self._status = "Stopped"
         self._position = 0       # мс
+        self.loop_status = "None"
+        self.shuffle = False
 
     # ---- команды с шины → GUI ----
     @method()
@@ -141,6 +143,24 @@ class MPRISPlayer(ServiceInterface):
     def Position(self) -> "x":
         return int(self._position) * 1000
 
+    # перемешивание и повтор: видны и переключаются из playerctl, острова и т. п.
+    @dbus_property()
+    def LoopStatus(self) -> "s":
+        return self.loop_status
+
+    @LoopStatus.setter
+    def LoopStatus(self, value: "s"):
+        if value in ("None", "Track", "Playlist"):
+            self.commands.set_loop.emit({"None": "", "Track": "one", "Playlist": "all"}[value])
+
+    @dbus_property()
+    def Shuffle(self) -> "b":
+        return self.shuffle
+
+    @Shuffle.setter
+    def Shuffle(self, value: "b"):
+        self.commands.set_shuffle.emit(bool(value))
+
     @dbus_property(access=PropertyAccess.READ)
     def Rate(self) -> "d":
         return 1.0
@@ -205,6 +225,18 @@ class MPRISPlayer(ServiceInterface):
         self.art_url = url or ""
         self._notify({"Metadata": self.Metadata})
 
+    def set_modes(self, shuffle, loop):
+        loop_status = {"one": "Track", "all": "Playlist"}.get(loop, "None")
+        changed = {}
+        if shuffle != self.shuffle:
+            self.shuffle = shuffle
+            changed["Shuffle"] = shuffle
+        if loop_status != self.loop_status:
+            self.loop_status = loop_status
+            changed["LoopStatus"] = loop_status
+        if changed:
+            self._notify(changed)
+
     def set_playback_status(self, status):
         if status == self._status:
             return
@@ -224,12 +256,14 @@ class MPRISPlayer(ServiceInterface):
 async def start_mpris(commands, volume_getter):
     loop = asyncio.get_running_loop()
     bus = await MessageBus().connect()
+    root = MPRISRoot(commands)
+    player = MPRISPlayer(commands, loop, volume_getter)
+    # сначала интерфейсы, потом имя: клиенты (остров, playerctld) спрашивают свойства сразу,
+    # как только имя появилось на шине
+    bus.export("/org/mpris/MediaPlayer2", root)
+    bus.export("/org/mpris/MediaPlayer2", player)
     # имя занято (второй экземпляр) — по спецификации MPRIS добавляем .instance<pid>
     reply = await bus.request_name("org.mpris.MediaPlayer2.GlideMusic", NameFlag.DO_NOT_QUEUE)
     if reply != RequestNameReply.PRIMARY_OWNER:
         await bus.request_name(f"org.mpris.MediaPlayer2.GlideMusic.instance{os.getpid()}", NameFlag.DO_NOT_QUEUE)
-    root = MPRISRoot(commands)
-    player = MPRISPlayer(commands, loop, volume_getter)
-    bus.export("/org/mpris/MediaPlayer2", root)
-    bus.export("/org/mpris/MediaPlayer2", player)
     return player

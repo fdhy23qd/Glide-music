@@ -307,6 +307,8 @@ class GlideMusicModern(QMainWindow):
         cmd.previous.connect(self.prev_track)
         cmd.seek.connect(self.seek_to)
         cmd.raise_window.connect(self.bring_to_front)
+        cmd.set_shuffle.connect(lambda on: on != self.is_shuffled and self.toggle_shuffle())
+        cmd.set_loop.connect(self.set_loop_mode)
 
         # Discord Rich Presence — можно выключить в настройках (и в тестах: GLIDE_MUSIC_NO_DISCORD=1)
         self.discord_on = self.settings.value("discord", True, type=bool) and not os.environ.get("GLIDE_MUSIC_NO_DISCORD")
@@ -544,6 +546,8 @@ class GlideMusicModern(QMainWindow):
         icon = "LOOP_ONE_ICON_SVG" if self.is_looped == "one" else "LOOP_ICON_SVG"
         tip = {"one": "Повтор: один трек", "all": "Повтор: весь список"}.get(self.is_looped, "Повтор: выключен")
         self._set_mode(self.btn_loop, icon, bool(self.is_looped), tip)
+        if hasattr(self, "session"):
+            self.session.set_modes(self.is_shuffled, self.is_looped or "")
 
     def _set_mode(self, button, icon, active, tip):
         button.setIcon(tinted_icon(icon, 16, self.c["accent"] if active else self.c["text2"]))
@@ -559,7 +563,10 @@ class GlideMusicModern(QMainWindow):
         self._apply_modes()
 
     def toggle_loop(self):
-        self.is_looped = {False: "one", "one": "all", "all": False}[self.is_looped]
+        self.set_loop_mode({False: "one", "one": "all", "all": False}[self.is_looped] or "")
+
+    def set_loop_mode(self, mode):
+        self.is_looped = mode if mode in ("one", "all") else False
         self.settings.setValue("loop", self.is_looped or "")
         self._apply_modes()
 
@@ -949,6 +956,7 @@ class GlideMusicModern(QMainWindow):
             btn.setToolTip(tip)
             btn.setIcon(tinted_icon(name, 14, self.c["text"]))
             btn.setIconSize(QSize(14, 14))
+            btn.setFixedSize(34, 30)   # иначе тулбар сжимает кнопку до 18 px и от значка остаётся точка
             btn.clicked.connect(slot)
             self.toolbar.addWidget(btn)
 
